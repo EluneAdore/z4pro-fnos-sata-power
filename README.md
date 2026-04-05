@@ -1,5 +1,5 @@
-# z4pro-sata-power
-极空间Z4 Pro SATA背板通电
+# z4pro-fnos-sata-power
+极空间Z4 Pro FNOS SATA背板通电
 
 # z4pro-gpio
 ## 原始系统上电
