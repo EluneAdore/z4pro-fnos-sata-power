@@ -1,0 +1,53 @@
+# Z4 Pro / SPACE SATA 电源 GPIO — 纯 systemd，开机尽早执行
+#
+# 说明：在「systemd + udev 已能处理内核事件」之后尽快执行 up；不依赖计划任务/cron。
+# 若曾安装 71-z4pro-sata-power.rules，请删除该 rules 并 udevadm control --reload-rules，
+# 且勿与 enable 本服务同时使用 udev 触发，否则 up 可能执行两次。
+#
+# 安装（root）：
+#   install -m 755 z4pro-gpio-sata-power.sh /usr/local/sbin/z4pro-gpio-sata-power.sh
+#   install -m 644 z4pro-gpio-sata-power.service /etc/systemd/system/
+#   # 脚本若在 /etc，请改下面 ExecStart
+#   systemctl daemon-reload
+#   systemctl enable z4pro-gpio-sata-power.service
+#
+# 验证顺序：systemd-analyze critical-chain z4pro-gpio-sata-power.service
+# 日志：journalctl -u z4pro-gpio-sata-power.service -b --no-pager
+#
+# 若 enable 报 ordering cycle：注释 [Unit] 里 Before=local-fs-pre.target，
+# 并把 [Install] 改为 WantedBy=multi-user.target（会晚一些，但可启动）。
+#
+# 排错（failed / exit code）：
+#   journalctl -xeu z4pro-gpio-sata-power.service --no-pager -n 80
+#   test -x /usr/local/sbin/z4pro-gpio-sata-power.sh && ls -la /usr/local/sbin/z4pro-gpio-sata-power.sh
+#   /bin/bash /usr/local/sbin/z4pro-gpio-sata-power.sh up
+# 常见原因：脚本不在 ExecStart 路径、无执行权限、Windows 换行导致 shebang 失败（用 bash 显式调用可缓解）
+
+[Unit]
+Description=Z4 Pro SATA bay power-on (GPIO, early boot)
+Documentation=https://github.com/lightfex/z4pro-sata-power
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=shutdown.target
+# 不等待整个 sysinit.target 结束，udev 就绪后即跑，尽量早于本地存储前置阶段
+Wants=systemd-udevd.service
+After=systemd-udevd.service
+# 若偶发「export 失败、重启示又有了」，可取消下面两行注释，让模块先加载再 udev
+# Wants=systemd-modules-load.service
+# After=systemd-modules-load.service systemd-udevd.service
+Before=local-fs-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# 用 /bin/bash 显式执行，避免 shebang 损坏或 CRLF；上电含多口 sleep，放宽超时
+TimeoutStartSec=300
+ExecStart=/bin/bash /usr/local/sbin/z4pro-gpio-sata-power.sh up
+# 若脚本仅在 /etc，改为：ExecStart=/bin/bash /etc/z4pro-gpio-sata-power.sh up
+SyslogIdentifier=z4pro-sata-power
+StandardOutput=journal
+StandardError=journal
+# Environment=Z4PRO_LOG_FILE=/var/log/z4pro-sata-power.log
+
+[Install]
+WantedBy=sysinit.target
